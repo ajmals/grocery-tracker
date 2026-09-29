@@ -1,0 +1,22 @@
+# Operating System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Editor & IDE Directories
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# Local Scratch Notes & Private Testing Files
+notes.txt
+*.local
+*.log
+*.tmp
+scratch/
+test-receipts/
