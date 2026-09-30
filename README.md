@@ -12,10 +12,10 @@
 
 ## 💡 Why This Project Exists
 
-> *"I created this project to make my life easier and keep track of grocery prices across different supermarkets. With prices fluctuating almost daily, I wanted a clear way to:*
+> *"I built this project to solve a personal frustration: keeping track of grocery prices across different supermarkets. With the current economic situation in the Maldives causing prices to fluctuate almost daily, I needed a reliable and clear way to compare costs and make smarter shopping decisions. The goal is to:*
 > 1. *Find where the exact same product is sold cheaper.*
-> 2. *Detect if a specific store quietly raised their prices over time.*
-> 3. *Track seasonal price patterns (e.g. Ramadan surges, festive seasons, monsoon import delays).*
+> 2. *Detect if a specific store quietly raised its prices over time.*
+> 3. *Track seasonal price patterns (e.g., Ramadan surges, festive seasons, monsoon import delays).*
 > 4. *Identify long-term inflation patterns as more receipt data accumulates over months and years.*
 >
 > *The entire system runs automatically in the background on free Google infrastructure without paying for third-party apps or subscriptions."*
