@@ -12,9 +12,15 @@
 
 // Global Configuration
 const CONFIG = {
-  // Folder Names in your Google Drive (created automatically upon setup)
-  UPLOAD_FOLDER_NAME: 'Receipt_Uploads',
-  PROCESSED_FOLDER_NAME: 'Receipt_Processed',
+  // Master Google Drive Folder Structure (all nested inside one root folder)
+  PARENT_FOLDER_NAME: 'Receipt_Scraper',
+  PERSONAL_UPLOAD_FOLDER_NAME: '1_Personal_Uploads',
+  COMMUNITY_UPLOAD_FOLDER_NAME: '2_Community_Uploads',
+  PROCESSED_FOLDER_NAME: '3_Processed',
+
+  // Legacy Folder Support (for seamless upgrade without losing pending files)
+  LEGACY_UPLOAD_FOLDER_NAME: 'Receipt_Uploads',
+  LEGACY_PROCESSED_FOLDER_NAME: 'Receipt_Processed',
 
   // Sheet Tab Names
   SHEET_RECEIPTS: 'Receipts',
@@ -50,8 +56,10 @@ const CONFIG = {
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('🧾 Receipt Scraper')
-    .addItem('▶️ Process Pending Receipts Now', 'processPendingReceiptsWithAlert')
+    .addItem('📝 Open Receipt & Grocery Form', 'openFormDialog')
+    .addItem('🌐 Get Sharable Form Links', 'showFormUrlsDialog')
     .addSeparator()
+    .addItem('▶️ Process Pending Receipts Now', 'processPendingReceiptsWithAlert')
     .addItem('📊 Build / Refresh Dashboards', 'buildDashboardTabsWithAlert')
     .addSeparator()
     .addItem('🔍 Run Diagnostics & Check Status', 'runDiagnostics')
@@ -64,7 +72,7 @@ function onOpen() {
 }
 
 /**
- * Diagnostic tool: Checks API key, sheets, and inspects the upload folder
+ * Diagnostic tool: Checks API key, sheets, and inspects the upload folders
  */
 function runDiagnostics() {
   const ui = SpreadsheetApp.getUi();
@@ -79,23 +87,25 @@ function runDiagnostics() {
     report += '✅ GEMINI_API_KEY: Set (' + apiKey.substring(0, 6) + '...' + apiKey.substring(apiKey.length - 4) + ')\n\n';
   }
 
-  // 2. Check Drive Folder
-  const uploadFolder = getOrCreateFolder(CONFIG.UPLOAD_FOLDER_NAME);
-  report += '📁 Upload Folder: "' + CONFIG.UPLOAD_FOLDER_NAME + '"\n';
-  report += '🔗 Folder URL: ' + uploadFolder.getUrl() + '\n\n';
-  
-  const files = uploadFolder.getFiles();
-  let fileList = [];
-  while (files.hasNext()) {
-    const f = files.next();
-    fileList.push(f.getName() + ' (' + f.getMimeType() + ')');
-  }
+  // 2. Check Drive Folders
+  const folders = getSystemFolders();
+  report += '📁 Master Parent Folder: "' + CONFIG.PARENT_FOLDER_NAME + '"\n';
+  report += '🔗 Master URL: ' + folders.root.getUrl() + '\n\n';
 
-  if (fileList.length === 0) {
-    report += '⚠️ Files in Upload Folder: 0 files found.\n(Upload your receipt image/PDF to the folder link above)\n\n';
-  } else {
-    report += '✅ Files Ready to Process (' + fileList.length + '):\n- ' + fileList.join('\n- ') + '\n\n';
-  }
+  const countFiles = (folder) => {
+    if (!folder) return 0;
+    const it = folder.getFiles();
+    let count = 0;
+    while (it.hasNext()) { it.next(); count++; }
+    return count;
+  };
+
+  const personalCount = countFiles(folders.personalUpload);
+  const communityCount = countFiles(folders.communityUpload);
+
+  report += '📂 Upload Folders:\n';
+  report += '• 👤 1_Personal_Uploads: ' + personalCount + ' file(s) pending\n';
+  report += '• 👥 2_Community_Uploads: ' + communityCount + ' file(s) pending\n\n';
 
   // 3. Check Sheets
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -106,8 +116,8 @@ function runDiagnostics() {
   const trendsSheet = ss.getSheetByName(CONFIG.SHEET_PRICE_TRENDS);
   const matrixSheet = ss.getSheetByName(CONFIG.SHEET_STORE_MATRIX);
   report += '📊 Sheets:\n';
-  report += '- Receipts Tab: ' + (receiptsSheet ? '✅ Present' : '❌ Missing (Click Initialize Sheets)') + '\n';
-  report += '- Items Tab: ' + (itemsSheet ? '✅ Present' : '❌ Missing (Click Initialize Sheets)') + '\n';
+  report += '- Receipts Tab: ' + (receiptsSheet ? '✅ Present (' + (receiptsSheet.getLastColumn() >= 13 ? 'Source column active' : 'Legacy schema') + ')' : '❌ Missing (Click Initialize Sheets)') + '\n';
+  report += '- Items Tab: ' + (itemsSheet ? '✅ Present (' + (itemsSheet.getLastColumn() >= 13 ? 'Source column active' : 'Legacy schema') + ')' : '❌ Missing (Click Initialize Sheets)') + '\n';
   report += '- Dashboard Tab: ' + (dashSheet ? '✅ Present' : '⚠️ Missing (Click "Build / Refresh Dashboards")') + '\n';
   report += '- Price Compare Tab: ' + (compareSheet ? '✅ Present' : '⚠️ Missing (Click "Build / Refresh Dashboards")') + '\n';
   report += '- Seasonal Trends Tab: ' + (trendsSheet ? '✅ Present' : '⚠️ Missing (Click "Build / Refresh Dashboards")') + '\n';
@@ -125,7 +135,7 @@ function runDiagnostics() {
   report += '⏰ Hourly Auto-Scraper Trigger:\n';
   report += hasHourlyTrigger
     ? '✅ ACTIVE: Running automatically every hour until pending receipts succeed.'
-    : '⚠️ NOT ACTIVE: Receipts won\'t scrape in background. Click "Create 1-Hour Scheduled Trigger" from the menu to activate.';
+    : '⚠️ NOT ACTIVE: Receipts won\'t scrape in background. Click "Enable Hourly Auto-Scraper Trigger" from the menu to activate.';
 
   ui.alert('Receipt Scraper Diagnostics', report, ui.ButtonSet.OK);
 }
@@ -182,7 +192,7 @@ function listAvailableModels() {
  */
 function processPendingReceiptsWithAlert() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  ss.toast('Reading receipts and contacting Gemini...', 'Receipt Scraper', 10);
+  ss.toast('Scanning personal & community folders and contacting Gemini...', 'Receipt Scraper', 10);
   
   try {
     const result = processPendingReceipts();
@@ -197,14 +207,16 @@ function processPendingReceiptsWithAlert() {
       } else {
         SpreadsheetApp.getUi().alert(
           'No Receipts Found',
-          'No pending files found in "' + CONFIG.UPLOAD_FOLDER_NAME + '".\n\n' +
-          'Upload receipt images or PDFs into that folder, then run this again.',
+          'No pending files found in "' + CONFIG.PERSONAL_UPLOAD_FOLDER_NAME + '" or "' + CONFIG.COMMUNITY_UPLOAD_FOLDER_NAME + '".\n\n' +
+          'Upload receipt images or PDFs into those folders (or use the Form from the menu), then run this again.',
           SpreadsheetApp.getUi().ButtonSet.OK
         );
       }
     } else {
-      let msg = 'Successfully processed ' + result.count + ' receipt(s)!\nCheck your "' + 
-                CONFIG.SHEET_RECEIPTS + '" and "' + CONFIG.SHEET_ITEMS + '" tabs.';
+      let msg = 'Successfully processed ' + result.count + ' receipt(s)!\n' +
+                '• 👤 Personal: ' + result.personalCount + '\n' +
+                '• 👥 Community: ' + result.communityCount + '\n\n' +
+                'Check your "' + CONFIG.SHEET_RECEIPTS + '" and "' + CONFIG.SHEET_ITEMS + '" tabs.';
       if (result.errors && result.errors.length > 0) {
         msg += '\n\nNote: ' + result.errors.length + ' file(s) had errors:\n' + result.errors.join('\n');
       }
@@ -216,7 +228,7 @@ function processPendingReceiptsWithAlert() {
 }
 
 /**
- * Main scheduled/manual job: Scans upload folder and processes receipts
+ * Main scheduled/manual job: Scans both Personal and Community upload folders
  */
 function processPendingReceipts() {
   const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
@@ -224,135 +236,202 @@ function processPendingReceipts() {
     throw new Error('GEMINI_API_KEY not found in Script Properties. Please add it in Project Settings (gear icon).');
   }
 
-  // Ensure sheets exist
+  // Ensure sheets exist with Source column
   ensureSheetSetup();
 
-  const uploadFolder = getOrCreateFolder(CONFIG.UPLOAD_FOLDER_NAME);
-  const processedFolder = getOrCreateFolder(CONFIG.PROCESSED_FOLDER_NAME);
-  const files = uploadFolder.getFiles();
-
+  const folders = getSystemFolders();
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const receiptsSheet = ss.getSheetByName(CONFIG.SHEET_RECEIPTS);
-  const itemsSheet = ss.getSheetByName(CONFIG.SHEET_ITEMS);
 
   let processedCount = 0;
+  let personalCount = 0;
+  let communityCount = 0;
   let errors = [];
 
-  while (files.hasNext() && processedCount < CONFIG.MAX_FILES_PER_RUN) {
-    const file = files.next();
-    const mimeType = file.getMimeType();
-    const fileName = file.getName();
-    const nameLower = fileName.toLowerCase();
+  // Helper queue scanner
+  const scanQueue = (folder, defaultSource) => {
+    if (!folder) return;
+    const files = folder.getFiles();
+    while (files.hasNext() && processedCount < CONFIG.MAX_FILES_PER_RUN) {
+      const file = files.next();
+      const fileName = file.getName();
+      const mimeType = file.getMimeType();
+      const nameLower = fileName.toLowerCase();
 
-    // Check supported file types (images or PDF)
-    const isImageOrPdf = mimeType.startsWith('image/') || 
-                         mimeType === 'application/pdf' || 
-                         nameLower.endsWith('.heic') || 
-                         nameLower.endsWith('.jpg') || 
-                         nameLower.endsWith('.jpeg') || 
-                         nameLower.endsWith('.png') ||
-                         nameLower.endsWith('.pdf');
+      const isImageOrPdf = mimeType.startsWith('image/') || 
+                           mimeType === 'application/pdf' || 
+                           nameLower.endsWith('.heic') || 
+                           nameLower.endsWith('.jpg') || 
+                           nameLower.endsWith('.jpeg') || 
+                           nameLower.endsWith('.png') ||
+                           nameLower.endsWith('.pdf');
 
-    if (!isImageOrPdf) {
-      Logger.log('Skipping unsupported file: ' + fileName + ' (' + mimeType + ')');
-      continue;
-    }
-
-    Logger.log('Processing file: ' + fileName);
-
-    try {
-      // 1. Call Gemini to extract structured receipt data
-      const receiptData = callGeminiReceiptOCR(file, apiKey);
-
-      if (!receiptData) {
-        throw new Error('Gemini returned empty data.');
+      if (!isImageOrPdf) {
+        Logger.log('Skipping unsupported file: ' + fileName + ' (' + mimeType + ')');
+        continue;
       }
 
-      // Normalize purchase date to YYYY-MM-DD (defaults to file date or today if missing)
-      receiptData.purchase_date = sanitizePurchaseDate(receiptData.purchase_date, file);
+      Logger.log('Processing [' + defaultSource + '] file: ' + fileName);
 
-      // 2. Generate a unique receipt identifier
-      const safeStore = (receiptData.store_name || 'STORE').replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase();
-      const receiptId = 'RCP-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd') + '-' + safeStore + '-' + Math.floor(100 + Math.random() * 900);
-      const processedAt = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
-      const fileUrl = file.getUrl();
-
-      // 3. Append to Receipts Sheet
-      const receiptRow = [
-        receiptId,
-        receiptData.purchase_date,
-        receiptData.store_name || 'Unknown Store',
-        receiptData.subtotal !== null && receiptData.subtotal !== undefined ? receiptData.subtotal : '',
-        receiptData.total_discounts || 0,
-        receiptData.total_fees || 0,
-        receiptData.tax || 0,
-        receiptData.total_paid !== null && receiptData.total_paid !== undefined ? receiptData.total_paid : '',
-        receiptData.currency || CONFIG.CURRENCY_CODE || 'MVR',
-        receiptData.payment_method || '',
-        fileUrl,
-        processedAt
-      ];
-      receiptsSheet.appendRow(receiptRow);
-
-      // 4. Append each item to Items Sheet
-      if (Array.isArray(receiptData.items) && receiptData.items.length > 0) {
-        const itemRows = receiptData.items.map(function(item) {
-          return [
-            receiptId,
-            receiptData.purchase_date,
-            receiptData.store_name || 'Unknown Store',
-            item.raw_name || '',
-            item.standard_name || item.raw_name || '',
-            item.category || 'Uncategorized',
-            (function() {
-              const qty = (item.quantity !== null && item.quantity !== undefined && Number(item.quantity) > 0) ? Number(item.quantity) : 1;
-              return qty;
-            })(),
-            item.unit || 'unit',
-            (function() {
-              const tot = (item.total_price !== null && item.total_price !== undefined && !isNaN(Number(item.total_price))) ? Number(item.total_price) : '';
-              return tot;
-            })(),
-            (function() {
-              const qty = (item.quantity !== null && item.quantity !== undefined && Number(item.quantity) > 0) ? Number(item.quantity) : 1;
-              const tot = (item.total_price !== null && item.total_price !== undefined && !isNaN(Number(item.total_price))) ? Number(item.total_price) : 0;
-              if (item.unit_price !== null && item.unit_price !== undefined && !isNaN(Number(item.unit_price)) && Number(item.unit_price) > 0) {
-                return Number(Number(item.unit_price).toFixed(2));
-              }
-              return (qty > 0 && tot > 0) ? Number((tot / qty).toFixed(2)) : tot;
-            })(),
-            item.is_on_sale ? 'YES' : 'NO',
-            item.notes || ''
-          ];
-        });
-
-        itemsSheet.getRange(
-          itemsSheet.getLastRow() + 1, 
-          1, 
-          itemRows.length, 
-          itemRows[0].length
-        ).setValues(itemRows);
-      }
-
-      // 5. Move file to Processed folder
       try {
-        file.moveTo(processedFolder);
-      } catch (moveErr) {
-        // Fallback move method for shared drives
-        processedFolder.addFile(file);
-        uploadFolder.removeFile(file);
+        processSingleReceiptFile(
+          file, 
+          defaultSource, 
+          apiKey, 
+          ss, 
+          folders.processed, 
+          folder
+        );
+        processedCount++;
+        if (defaultSource.indexOf('Personal') !== -1) {
+          personalCount++;
+        } else {
+          communityCount++;
+        }
+      } catch (err) {
+        Logger.log('Error processing ' + fileName + ': ' + err.toString());
+        errors.push(fileName + ': ' + (err.message || err.toString()));
       }
+    }
+  };
 
-      processedCount++;
-      Logger.log('Successfully processed: ' + fileName);
+  // 1. Process Personal uploads
+  scanQueue(folders.personalUpload, 'Personal');
 
-    } catch (err) {
-      Logger.log('Error processing ' + fileName + ': ' + err.toString());
-      errors.push(fileName + ': ' + (err.message || err.toString()));
+  // 2. Process Community uploads
+  if (processedCount < CONFIG.MAX_FILES_PER_RUN) {
+    scanQueue(folders.communityUpload, 'Community');
+  }
+
+  // 3. Process Legacy upload folder if present
+  if (processedCount < CONFIG.MAX_FILES_PER_RUN) {
+    const legacyFolders = DriveApp.getFoldersByName(CONFIG.LEGACY_UPLOAD_FOLDER_NAME);
+    if (legacyFolders.hasNext()) {
+      scanQueue(legacyFolders.next(), 'Personal');
     }
   }
 
-  return { count: processedCount, errors: errors };
+  return { 
+    count: processedCount, 
+    personalCount: personalCount, 
+    communityCount: communityCount, 
+    errors: errors 
+  };
+}
+
+/**
+ * Processes a single receipt file with Gemini OCR and appends to Receipts and Items tabs
+ */
+function processSingleReceiptFile(file, source, apiKey, ss, processedFolder, uploadFolder, contributorName) {
+  if (!apiKey) {
+    apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+  }
+  if (!ss) {
+    ss = SpreadsheetApp.getActiveSpreadsheet();
+  }
+  ensureSheetSetup();
+
+  const receiptsSheet = ss.getSheetByName(CONFIG.SHEET_RECEIPTS);
+  const itemsSheet = ss.getSheetByName(CONFIG.SHEET_ITEMS);
+
+  // 1. Call Gemini to extract structured receipt data
+  const receiptData = callGeminiReceiptOCR(file, apiKey);
+
+  if (!receiptData) {
+    throw new Error('Gemini returned empty data.');
+  }
+
+  // Normalize purchase date to YYYY-MM-DD (defaults to file date or today if missing)
+  receiptData.purchase_date = sanitizePurchaseDate(receiptData.purchase_date, file);
+
+  // 2. Generate a unique receipt identifier
+  const safeStore = (receiptData.store_name || 'STORE').replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase();
+  const receiptId = 'RCP-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd') + '-' + safeStore + '-' + Math.floor(100 + Math.random() * 900);
+  const processedAt = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+  const fileUrl = file.getUrl();
+
+  const effectiveSource = contributorName ? ('Community (' + contributorName + ')') : (source || 'Personal');
+
+  // 3. Append to Receipts Sheet (Column 13: Source)
+  const receiptRow = [
+    receiptId,
+    receiptData.purchase_date,
+    receiptData.store_name || 'Unknown Store',
+    receiptData.subtotal !== null && receiptData.subtotal !== undefined ? receiptData.subtotal : '',
+    receiptData.total_discounts || 0,
+    receiptData.total_fees || 0,
+    receiptData.tax || 0,
+    receiptData.total_paid !== null && receiptData.total_paid !== undefined ? receiptData.total_paid : '',
+    receiptData.currency || CONFIG.CURRENCY_CODE || 'MVR',
+    receiptData.payment_method || '',
+    fileUrl,
+    processedAt,
+    effectiveSource
+  ];
+  receiptsSheet.appendRow(receiptRow);
+
+  // 4. Append each item to Items Sheet (Column 13: Source)
+  let itemsCount = 0;
+  if (Array.isArray(receiptData.items) && receiptData.items.length > 0) {
+    itemsCount = receiptData.items.length;
+    const itemRows = receiptData.items.map(function(item) {
+      return [
+        receiptId,
+        receiptData.purchase_date,
+        receiptData.store_name || 'Unknown Store',
+        item.raw_name || '',
+        item.standard_name || item.raw_name || '',
+        item.category || 'Uncategorized',
+        (function() {
+          const qty = (item.quantity !== null && item.quantity !== undefined && Number(item.quantity) > 0) ? Number(item.quantity) : 1;
+          return qty;
+        })(),
+        item.unit || 'unit',
+        (function() {
+          const tot = (item.total_price !== null && item.total_price !== undefined && !isNaN(Number(item.total_price))) ? Number(item.total_price) : '';
+          return tot;
+        })(),
+        (function() {
+          const qty = (item.quantity !== null && item.quantity !== undefined && Number(item.quantity) > 0) ? Number(item.quantity) : 1;
+          const tot = (item.total_price !== null && item.total_price !== undefined && !isNaN(Number(item.total_price))) ? Number(item.total_price) : 0;
+          if (item.unit_price !== null && item.unit_price !== undefined && !isNaN(Number(item.unit_price)) && Number(item.unit_price) > 0) {
+            return Number(Number(item.unit_price).toFixed(2));
+          }
+          return (qty > 0 && tot > 0) ? Number((tot / qty).toFixed(2)) : tot;
+        })(),
+        item.is_on_sale ? 'YES' : 'NO',
+        item.notes || '',
+        effectiveSource
+      ];
+    });
+
+    itemsSheet.getRange(
+      itemsSheet.getLastRow() + 1, 
+      1, 
+      itemRows.length, 
+      itemRows[0].length
+    ).setValues(itemRows);
+  }
+
+  // 5. Move file to Processed folder
+  if (processedFolder) {
+    try {
+      file.moveTo(processedFolder);
+    } catch (moveErr) {
+      // Fallback move method for shared drives
+      processedFolder.addFile(file);
+      if (uploadFolder) {
+        uploadFolder.removeFile(file);
+      }
+    }
+  }
+
+  return {
+    receiptId: receiptId,
+    storeName: receiptData.store_name || 'Unknown Store',
+    totalPaid: receiptData.total_paid || 0,
+    itemsCount: itemsCount,
+    source: effectiveSource
+  };
 }
 
 /**
@@ -531,59 +610,103 @@ Important Instructions:
 }
 
 /**
- * Ensures Receipts and Items sheets exist with formatted headers
+ * Ensures Receipts and Items sheets exist with formatted headers and Source tagging column
  */
 function ensureSheetSetup() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
 
   let receiptsSheet = ss.getSheetByName(CONFIG.SHEET_RECEIPTS);
+  const receiptHeaders = [
+    'Receipt ID', 'Date', 'Store Name', 'Subtotal', 
+    'Discounts / Savings', 'Fees / Surcharges', 'Tax', 
+    'Total Paid', 'Currency', 'Payment Method', 
+    'Receipt URL', 'Processed At', 'Source'
+  ];
+
   if (!receiptsSheet) {
     receiptsSheet = ss.insertSheet(CONFIG.SHEET_RECEIPTS);
-    const receiptHeaders = [
-      'Receipt ID', 'Date', 'Store Name', 'Subtotal', 
-      'Discounts / Savings', 'Fees / Surcharges', 'Tax', 
-      'Total Paid', 'Currency', 'Payment Method', 
-      'Receipt URL', 'Processed At'
-    ];
     receiptsSheet.getRange(1, 1, 1, receiptHeaders.length).setValues([receiptHeaders]);
     receiptsSheet.getRange(1, 1, 1, receiptHeaders.length)
       .setFontWeight('bold')
       .setBackground('#1a73e8')
       .setFontColor('#ffffff');
     receiptsSheet.setFrozenRows(1);
+  } else {
+    // Check if Column 13 (Source) exists; if missing, add it and backfill existing rows
+    if (receiptsSheet.getLastColumn() < 13) {
+      receiptsSheet.getRange(1, 13).setValue('Source')
+        .setFontWeight('bold')
+        .setBackground('#1a73e8')
+        .setFontColor('#ffffff');
+      const lastRow = receiptsSheet.getLastRow();
+      if (lastRow > 1) {
+        const sourceRange = receiptsSheet.getRange(2, 13, lastRow - 1, 1);
+        const existingSources = sourceRange.getValues();
+        for (let i = 0; i < existingSources.length; i++) {
+          if (!existingSources[i][0]) {
+            existingSources[i][0] = 'Personal';
+          }
+        }
+        sourceRange.setValues(existingSources);
+      }
+    }
   }
 
   let itemsSheet = ss.getSheetByName(CONFIG.SHEET_ITEMS);
+  const itemHeaders = [
+    'Receipt ID', 'Date', 'Store Name', 'Raw Item Name', 
+    'Standardized Name', 'Category', 'Quantity', 'Unit', 
+    'Item Total Price', 'Unit Price', 'Is On Sale?', 'Notes', 'Source'
+  ];
+
   if (!itemsSheet) {
     itemsSheet = ss.insertSheet(CONFIG.SHEET_ITEMS);
-    const itemHeaders = [
-      'Receipt ID', 'Date', 'Store Name', 'Raw Item Name', 
-      'Standardized Name', 'Category', 'Quantity', 'Unit', 
-      'Item Total Price', 'Unit Price', 'Is On Sale?', 'Notes'
-    ];
     itemsSheet.getRange(1, 1, 1, itemHeaders.length).setValues([itemHeaders]);
     itemsSheet.getRange(1, 1, 1, itemHeaders.length)
       .setFontWeight('bold')
       .setBackground('#0d904f')
       .setFontColor('#ffffff');
     itemsSheet.setFrozenRows(1);
+  } else {
+    // Check if Column 13 (Source) exists; if missing, add it and backfill existing rows
+    if (itemsSheet.getLastColumn() < 13) {
+      itemsSheet.getRange(1, 13).setValue('Source')
+        .setFontWeight('bold')
+        .setBackground('#0d904f')
+        .setFontColor('#ffffff');
+      const lastRow = itemsSheet.getLastRow();
+      if (lastRow > 1) {
+        const sourceRange = itemsSheet.getRange(2, 13, lastRow - 1, 1);
+        const existingSources = sourceRange.getValues();
+        for (let i = 0; i < existingSources.length; i++) {
+          if (!existingSources[i][0]) {
+            existingSources[i][0] = 'Personal';
+          }
+        }
+        sourceRange.setValues(existingSources);
+      }
+    }
   }
 }
 
 /**
- * One-time setup: Creates tabs with formatting & Drive folders
+ * One-time setup: Creates tabs with formatting & nested Drive folders
  */
 function setupSheetAndFolders() {
   ensureSheetSetup();
-  getOrCreateFolder(CONFIG.UPLOAD_FOLDER_NAME);
-  getOrCreateFolder(CONFIG.PROCESSED_FOLDER_NAME);
+  const folders = getSystemFolders();
   buildDashboardTabs();
 
   SpreadsheetApp.getUi().alert(
-    'Setup Complete!\n\n' +
-    '• Folders created: "' + CONFIG.UPLOAD_FOLDER_NAME + '" & "' + CONFIG.PROCESSED_FOLDER_NAME + '"\n' +
-    '• Data Sheets: "' + CONFIG.SHEET_RECEIPTS + '" & "' + CONFIG.SHEET_ITEMS + '"\n' +
-    '• Dashboards: "' + CONFIG.SHEET_DASHBOARD + '", "' + CONFIG.SHEET_PRICE_COMPARE + '", "' + CONFIG.SHEET_PRICE_TRENDS + '" & "' + CONFIG.SHEET_STORE_MATRIX + '"\n\n' +
+    'Setup Complete! 🎉\n\n' +
+    '• Google Drive Master Folder: "' + CONFIG.PARENT_FOLDER_NAME + '"\n' +
+    '  - 👤 1_Personal_Uploads/ (Personal spending & tracker)\n' +
+    '  - 👥 2_Community_Uploads/ (Friends & family price compare only)\n' +
+    '  - 📦 3_Processed/ (Archived after scanning)\n\n' +
+    '• Sheets Initialized with "Source" Column:\n' +
+    '  - "' + CONFIG.SHEET_RECEIPTS + '" & "' + CONFIG.SHEET_ITEMS + '"\n\n' +
+    '• Dashboards Refreshed:\n' +
+    '  - 📊 Personal Dashboard, 🏷️ Price Compare, 📅 Seasonal Trends, 🏬 Store Matrix\n\n' +
     'Make sure to set your GEMINI_API_KEY in Project Settings > Script Properties.'
   );
 }
@@ -677,7 +800,7 @@ function buildSpendingDashboardSheet(ss) {
   sheet.setRowHeight(3, 12); // spacer
 
   // --- KPI Metric Cards (Rows 4-6, 5 Cards across Cols A to J) ---
-  // Card 1: Current Month Spend (A4:B6) - Auto-resets on the 1st of every month!
+  // Card 1: Current Month Personal Spend (A4:B6) - Auto-resets on the 1st of every month!
   sheet.getRange("A4:B4").merge()
     .setFormula("=\"THIS MONTH (\" & UPPER(TEXT(TODAY(), \"MMM\")) & \")\"")
     .setFontSize(9)
@@ -686,7 +809,7 @@ function buildSpendingDashboardSheet(ss) {
     .setBackground("#ede9fe")
     .setHorizontalAlignment("center");
   sheet.getRange("A5:B5").merge()
-    .setFormula("=IFERROR(SUMPRODUCT((IFERROR(TEXT(Receipts!B2:B, \"yyyy-mm\"), LEFT(Receipts!B2:B, 7)) = TEXT(TODAY(), \"yyyy-mm\")) * N(Receipts!H2:H)), 0)")
+    .setFormula("=IFERROR(SUMPRODUCT((IFERROR(TEXT(Receipts!B2:B, \"yyyy-mm\"), LEFT(Receipts!B2:B, 7)) = TEXT(TODAY(), \"yyyy-mm\")) * (Receipts!M2:M = \"Personal\") * N(Receipts!H2:H)), 0)")
     .setFontSize(17)
     .setFontWeight("bold")
     .setFontColor("#5b21b6")
@@ -701,7 +824,7 @@ function buildSpendingDashboardSheet(ss) {
     .setBackground("#f5f3ff")
     .setHorizontalAlignment("center");
 
-  // Card 2: All-Time Spend (C4:D6)
+  // Card 2: All-Time Personal Spend (C4:D6)
   sheet.getRange("C4:D4").merge()
     .setValue("ALL-TIME SPEND")
     .setFontSize(9)
@@ -710,7 +833,7 @@ function buildSpendingDashboardSheet(ss) {
     .setBackground("#f1f5f9")
     .setHorizontalAlignment("center");
   sheet.getRange("C5:D5").merge()
-    .setFormula("=IFERROR(SUM(Receipts!H2:H), 0)")
+    .setFormula("=IFERROR(SUMIFS(Receipts!H2:H, Receipts!M2:M, \"Personal\"), 0)")
     .setFontSize(17)
     .setFontWeight("bold")
     .setFontColor("#0f172a")
@@ -718,7 +841,7 @@ function buildSpendingDashboardSheet(ss) {
     .setNumberFormat(CONFIG.CURRENCY_FORMAT)
     .setHorizontalAlignment("center");
   sheet.getRange("C6:D6").merge()
-    .setValue("All logged receipts")
+    .setValue("Personal receipts only")
     .setFontSize(8)
     .setFontStyle("italic")
     .setFontColor("#64748b")
@@ -734,7 +857,7 @@ function buildSpendingDashboardSheet(ss) {
     .setBackground("#f1f5f9")
     .setHorizontalAlignment("center");
   sheet.getRange("E5:F5").merge()
-    .setFormula("=IFERROR(COUNTA(Receipts!A2:A), 0)")
+    .setFormula("=IFERROR(COUNTIFS(Receipts!A2:A, \"<>\", Receipts!M2:M, \"Personal\"), 0)")
     .setFontSize(17)
     .setFontWeight("bold")
     .setFontColor("#0f172a")
@@ -742,7 +865,7 @@ function buildSpendingDashboardSheet(ss) {
     .setNumberFormat("#,##0")
     .setHorizontalAlignment("center");
   sheet.getRange("E6:F6").merge()
-    .setValue("Total shopping trips")
+    .setValue("Personal trips")
     .setFontSize(8)
     .setFontStyle("italic")
     .setFontColor("#64748b")
@@ -758,7 +881,7 @@ function buildSpendingDashboardSheet(ss) {
     .setBackground("#d1fae5")
     .setHorizontalAlignment("center");
   sheet.getRange("G5:H5").merge()
-    .setFormula("=IFERROR(SUM(Receipts!E2:E), 0)")
+    .setFormula("=IFERROR(SUMIFS(Receipts!E2:E, Receipts!M2:M, \"Personal\"), 0)")
     .setFontSize(17)
     .setFontWeight("bold")
     .setFontColor("#047857")
@@ -766,7 +889,7 @@ function buildSpendingDashboardSheet(ss) {
     .setNumberFormat(CONFIG.CURRENCY_FORMAT)
     .setHorizontalAlignment("center");
   sheet.getRange("G6:H6").merge()
-    .setValue("Discounts & promos")
+    .setValue("Personal discounts")
     .setFontSize(8)
     .setFontStyle("italic")
     .setFontColor("#059669")
@@ -782,7 +905,7 @@ function buildSpendingDashboardSheet(ss) {
     .setBackground("#dbeafe")
     .setHorizontalAlignment("center");
   sheet.getRange("I5:J5").merge()
-    .setFormula("=IFERROR(AVERAGE(Receipts!H2:H), 0)")
+    .setFormula("=IFERROR(AVERAGEIFS(Receipts!H2:H, Receipts!M2:M, \"Personal\"), 0)")
     .setFontSize(17)
     .setFontWeight("bold")
     .setFontColor("#1d4ed8")
@@ -790,7 +913,7 @@ function buildSpendingDashboardSheet(ss) {
     .setNumberFormat(CONFIG.CURRENCY_FORMAT)
     .setHorizontalAlignment("center");
   sheet.getRange("I6:J6").merge()
-    .setValue("Avg spend per trip")
+    .setValue("Avg spend per personal trip")
     .setFontSize(8)
     .setFontStyle("italic")
     .setFontColor("#2563eb")
@@ -811,14 +934,14 @@ function buildSpendingDashboardSheet(ss) {
 
   // --- Category Spending Section (Left: A8:D19) ---
   sheet.getRange("A8:D8").merge()
-    .setValue("SPENDING BY CATEGORY (" + CONFIG.CURRENCY_CODE + ")")
+    .setValue("PERSONAL SPENDING BY CATEGORY (" + CONFIG.CURRENCY_CODE + ")")
     .setFontWeight("bold")
     .setFontSize(10)
     .setFontColor("#ffffff")
     .setBackground("#334155");
   
   sheet.getRange("A9").setFormula(
-    "=IFERROR(QUERY(Items!A2:L, \"SELECT F, SUM(I), COUNT(E) WHERE F IS NOT NULL AND F <> \x27\x27 GROUP BY F ORDER BY SUM(I) DESC LABEL F \x27Category\x27, SUM(I) \x27Total Spend (" + CONFIG.CURRENCY_CODE + ")\x27, COUNT(E) \x27Items\x27\"), {\"Category\", \"Total Spend (" + CONFIG.CURRENCY_CODE + ")\", \"Items\"; \"No items yet\", 0, 0})"
+    "=IFERROR(QUERY(Items!A2:M, \"SELECT F, SUM(I), COUNT(E) WHERE F IS NOT NULL AND F <> \x27\x27 AND M = \x27Personal\x27 GROUP BY F ORDER BY SUM(I) DESC LABEL F \x27Category\x27, SUM(I) \x27Total Spend (" + CONFIG.CURRENCY_CODE + ")\x27, COUNT(E) \x27Items\x27\"), {\"Category\", \"Total Spend (" + CONFIG.CURRENCY_CODE + ")\", \"Items\"; \"No personal items yet\", 0, 0})"
   );
   sheet.getRange("A9:D9").setFontWeight("bold").setBackground("#f1f5f9");
   sheet.getRange("B10:B25").setNumberFormat(CONFIG.CURRENCY_FORMAT);
@@ -826,14 +949,14 @@ function buildSpendingDashboardSheet(ss) {
 
   // --- Store Spending Section (Right: F8:J19) ---
   sheet.getRange("F8:J8").merge()
-    .setValue("SPENDING BY STORE (" + CONFIG.CURRENCY_CODE + ")")
+    .setValue("PERSONAL SPENDING BY STORE (" + CONFIG.CURRENCY_CODE + ")")
     .setFontWeight("bold")
     .setFontSize(10)
     .setFontColor("#ffffff")
     .setBackground("#334155");
 
   sheet.getRange("F9").setFormula(
-    "=IFERROR(QUERY(Receipts!A2:L, \"SELECT C, SUM(H), COUNT(A), AVG(H) WHERE C IS NOT NULL AND C <> \x27\x27 GROUP BY C ORDER BY SUM(H) DESC LABEL C \x27Store\x27, SUM(H) \x27Total Spent (" + CONFIG.CURRENCY_CODE + ")\x27, COUNT(A) \x27Visits\x27, AVG(H) \x27Avg / Trip\x27\"), {\"Store\", \"Total Spent (" + CONFIG.CURRENCY_CODE + ")\", \"Visits\", \"Avg / Trip\"; \"No receipts yet\", 0, 0, 0})"
+    "=IFERROR(QUERY(Receipts!A2:M, \"SELECT C, SUM(H), COUNT(A), AVG(H) WHERE C IS NOT NULL AND C <> \x27\x27 AND M = \x27Personal\x27 GROUP BY C ORDER BY SUM(H) DESC LABEL C \x27Store\x27, SUM(H) \x27Total Spent (" + CONFIG.CURRENCY_CODE + ")\x27, COUNT(A) \x27Visits\x27, AVG(H) \x27Avg / Trip\x27\"), {\"Store\", \"Total Spent (" + CONFIG.CURRENCY_CODE + ")\", \"Visits\", \"Avg / Trip\"; \"No personal receipts yet\", 0, 0, 0})"
   );
   sheet.getRange("F9:J9").setFontWeight("bold").setBackground("#f1f5f9");
   sheet.getRange("G10:G25").setNumberFormat(CONFIG.CURRENCY_FORMAT);
@@ -910,19 +1033,19 @@ function buildSpendingDashboardSheet(ss) {
     sheet.getRange("G" + r + ":H" + r).merge();
     sheet.getRange("I" + r + ":J" + r).merge();
 
-    // Distinct Month
+    // Distinct Month (Personal receipts only)
     sheet.getRange("A" + r).setFormula(
-      '=IFERROR(INDEX(SORT(UNIQUE(MAP(FILTER(Receipts!B$2:B, Receipts!B$2:B<>""), LAMBDA(d, IFERROR(TEXT(d, "yyyy-mm"), LEFT(d, 7))))), 1, FALSE), ' + m + '), "—")'
+      '=IFERROR(INDEX(SORT(UNIQUE(MAP(FILTER(Receipts!B$2:B, (Receipts!B$2:B<>"") * (Receipts!M$2:M="Personal")), LAMBDA(d, IFERROR(TEXT(d, "yyyy-mm"), LEFT(d, 7))))), 1, FALSE), ' + m + '), "—")'
     ).setFontWeight("bold").setHorizontalAlignment("center");
 
-    // Total Spend
+    // Total Spend (Personal)
     sheet.getRange("C" + r).setFormula(
-      '=IF(A' + r + '="—", 0, IFERROR(SUMPRODUCT((IFERROR(TEXT(Receipts!B$2:B, "yyyy-mm"), LEFT(Receipts!B$2:B, 7)) = A' + r + ') * N(Receipts!H$2:H)), 0))'
+      '=IF(A' + r + '="—", 0, IFERROR(SUMPRODUCT((IFERROR(TEXT(Receipts!B$2:B, "yyyy-mm"), LEFT(Receipts!B$2:B, 7)) = A' + r + ') * (Receipts!M$2:M = "Personal") * N(Receipts!H$2:H)), 0))'
     ).setFontWeight("bold").setNumberFormat(CONFIG.CURRENCY_FORMAT).setHorizontalAlignment("center");
 
-    // Trips
+    // Trips (Personal)
     sheet.getRange("E" + r).setFormula(
-      '=IF(A' + r + '="—", 0, IFERROR(SUMPRODUCT((IFERROR(TEXT(Receipts!B$2:B, "yyyy-mm"), LEFT(Receipts!B$2:B, 7)) = A' + r + ') * 1), 0))'
+      '=IF(A' + r + '="—", 0, IFERROR(SUMPRODUCT((IFERROR(TEXT(Receipts!B$2:B, "yyyy-mm"), LEFT(Receipts!B$2:B, 7)) = A' + r + ') * (Receipts!M$2:M = "Personal") * 1), 0))'
     ).setHorizontalAlignment("center").setNumberFormat('#,##0" trips"');
 
     // Avg Basket
@@ -930,9 +1053,9 @@ function buildSpendingDashboardSheet(ss) {
       '=IF(OR(A' + r + '="—", E' + r + '=0), 0, IFERROR(C' + r + ' / E' + r + ', 0))'
     ).setNumberFormat(CONFIG.CURRENCY_FORMAT).setHorizontalAlignment("center");
 
-    // Savings
+    // Savings (Personal)
     sheet.getRange("I" + r).setFormula(
-      '=IF(A' + r + '="—", 0, IFERROR(SUMPRODUCT((IFERROR(TEXT(Receipts!B$2:B, "yyyy-mm"), LEFT(Receipts!B$2:B, 7)) = A' + r + ') * N(Receipts!E$2:E)), 0))'
+      '=IF(A' + r + '="—", 0, IFERROR(SUMPRODUCT((IFERROR(TEXT(Receipts!B$2:B, "yyyy-mm"), LEFT(Receipts!B$2:B, 7)) = A' + r + ') * (Receipts!M$2:M = "Personal") * N(Receipts!E$2:E)), 0))'
     ).setNumberFormat(CONFIG.CURRENCY_FORMAT).setHorizontalAlignment("center").setFontColor("#059669");
 
     const rowBg = m % 2 === 0 ? "#f8fafc" : "#ffffff";
@@ -1629,6 +1752,35 @@ function removeHourlyTrigger() {
 }
 
 /**
+ * Helper to retrieve the organized Google Drive folder structure.
+ * Creates the parent folder and nested subfolders if missing.
+ */
+function getSystemFolders() {
+  const root = getOrCreateFolder(CONFIG.PARENT_FOLDER_NAME);
+  const personalUpload = getOrCreateSubFolder(root, CONFIG.PERSONAL_UPLOAD_FOLDER_NAME);
+  const communityUpload = getOrCreateSubFolder(root, CONFIG.COMMUNITY_UPLOAD_FOLDER_NAME);
+  const processed = getOrCreateSubFolder(root, CONFIG.PROCESSED_FOLDER_NAME);
+
+  return {
+    root: root,
+    personalUpload: personalUpload,
+    communityUpload: communityUpload,
+    processed: processed
+  };
+}
+
+/**
+ * Helper to retrieve a child folder within a parent folder, or create it if missing
+ */
+function getOrCreateSubFolder(parentFolder, childFolderName) {
+  const folders = parentFolder.getFoldersByName(childFolderName);
+  if (folders.hasNext()) {
+    return folders.next();
+  }
+  return parentFolder.createFolder(childFolderName);
+}
+
+/**
  * Helper to retrieve a Google Drive folder by name or create it if missing
  */
 function getOrCreateFolder(folderName) {
@@ -1683,4 +1835,263 @@ function sanitizePurchaseDate(rawDate, file) {
   }
 
   return defaultDateStr;
+}
+
+// ==============================================================================
+// 📝 RECEIPT & GROCERY FORM (WEB APP & SHEET DIALOG)
+// ==============================================================================
+
+/**
+ * Serves the HTML Web App when accessed via browser URL.
+ * URL parameters:
+ *   ?mode=community  -> Locks into Community mode for friends & family (hiding Personal toggle)
+ */
+function doGet(e) {
+  const mode = (e && e.parameter && e.parameter.mode) ? e.parameter.mode.toLowerCase() : '';
+  const isCommunityOnly = (mode === 'community' || mode === 'friends' || mode === 'family');
+  
+  const template = HtmlService.createTemplateFromFile('Form');
+  template.isCommunityOnly = isCommunityOnly;
+  template.currencyCode = CONFIG.CURRENCY_CODE;
+
+  return template.evaluate()
+    .setTitle(isCommunityOnly ? '👥 Community Grocery Price Contributor' : '🧾 Receipt & Grocery Entry')
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL)
+    .addMetaTag('viewport', 'width=device-width, initial-scale=1.0');
+}
+
+/**
+ * Opens the Receipt & Grocery Entry Form directly inside Google Sheets as a dialog
+ */
+function openFormDialog() {
+  const template = HtmlService.createTemplateFromFile('Form');
+  template.isCommunityOnly = false;
+  template.currencyCode = CONFIG.CURRENCY_CODE;
+
+  const htmlOutput = template.evaluate()
+    .setWidth(680)
+    .setHeight(750);
+
+  SpreadsheetApp.getUi().showModalDialog(htmlOutput, '🧾 Receipt & Grocery Entry');
+}
+
+/**
+ * Shows sharable URLs to copy or send to friends & family
+ */
+function showFormUrlsDialog() {
+  let webAppUrl = ScriptApp.getService().getUrl();
+  let content = '';
+
+  if (!webAppUrl) {
+    content = '<p style="font-family:sans-serif; font-size:13px; line-height:1.5;">' +
+      '⚠️ <strong>Web App not yet deployed!</strong><br><br>' +
+      'To enable mobile browser access and get sharable links for friends and family:<br>' +
+      '1. In Apps Script editor, click <strong>Deploy</strong> (top right) &gt; <strong>New deployment</strong>.<br>' +
+      '2. Select type: <strong>Web app</strong>.<br>' +
+      '3. Set <em>Execute as</em>: <strong>Me</strong>.<br>' +
+      '4. Set <em>Who has access</em>: <strong>Anyone</strong>.<br>' +
+      '5. Click <strong>Deploy</strong>, authorize if prompted, and reopen this menu item!' +
+      '</p>';
+  } else {
+    const communityUrl = webAppUrl + (webAppUrl.indexOf('?') === -1 ? '?' : '&') + 'mode=community';
+    content = '<div style="font-family:sans-serif; font-size:13px; color:#1e293b; line-height:1.5;">' +
+      '<p><strong>1. 👤 Your Master Form Link:</strong> (Access on your phone with Personal &amp; Community toggle)</p>' +
+      '<input type="text" value="' + webAppUrl + '" style="width:100%; padding:8px; font-size:12px; margin-bottom:14px; border:1px solid #cbd5e1; border-radius:6px;" readonly onclick="this.select();">' +
+      '<p><strong>2. 👥 Friends &amp; Family Sharable Link:</strong> (Permanently locked to Community price comparison mode)</p>' +
+      '<input type="text" value="' + communityUrl + '" style="width:100%; padding:8px; font-size:12px; margin-bottom:14px; border:1px solid #cbd5e1; border-radius:6px; background:#eff6ff;" readonly onclick="this.select();">' +
+      '<p style="font-size:11px; color:#64748b;">Share the Friends &amp; Family link on WhatsApp or Viber. Receipts submitted through it will only enrich your price comparison charts and will never affect your personal budget!</p>' +
+      '</div>';
+  }
+
+  const html = HtmlService.createHtmlOutput(content)
+    .setWidth(560)
+    .setHeight(320);
+  SpreadsheetApp.getUi().showModalDialog(html, '🌐 Sharable Form Links');
+}
+
+/**
+ * Returns metadata (currency and known store names) for the Form UI
+ */
+function getFormMetadata() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const receiptsSheet = ss.getSheetByName(CONFIG.SHEET_RECEIPTS);
+  let knownStores = [];
+
+  if (receiptsSheet && receiptsSheet.getLastRow() > 1) {
+    const storeValues = receiptsSheet.getRange(2, 3, receiptsSheet.getLastRow() - 1, 1).getValues();
+    const storeSet = {};
+    for (let i = 0; i < storeValues.length; i++) {
+      const s = String(storeValues[i][0] || '').trim();
+      if (s && s !== 'Unknown Store' && !storeSet[s]) {
+        storeSet[s] = true;
+        knownStores.push(s);
+      }
+    }
+  }
+
+  return {
+    currencyCode: CONFIG.CURRENCY_CODE,
+    knownStores: knownStores.sort()
+  };
+}
+
+/**
+ * Handles receipt photo upload from the Form
+ */
+function uploadReceiptFromForm(payload) {
+  try {
+    if (!payload || !payload.fileBase64) {
+      throw new Error('No image file received.');
+    }
+
+    const folders = getSystemFolders();
+    const isPersonal = (payload.source === 'Personal');
+    const targetFolder = isPersonal ? folders.personalUpload : folders.communityUpload;
+
+    const decodedBytes = Utilities.base64Decode(payload.fileBase64);
+    const mimeType = payload.mimeType || 'image/jpeg';
+    const fileName = payload.fileName || ('receipt_' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd_HHmmss') + '.jpg');
+
+    const blob = Utilities.newBlob(decodedBytes, mimeType, fileName);
+    const file = targetFolder.createFile(blob);
+
+    if (payload.processImmediately) {
+      const apiKey = PropertiesService.getScriptProperties().getProperty('GEMINI_API_KEY');
+      if (!apiKey) {
+        throw new Error('Receipt saved to folder, but GEMINI_API_KEY is missing in Script Properties.');
+      }
+
+      const ss = SpreadsheetApp.getActiveSpreadsheet();
+      const processResult = processSingleReceiptFile(
+        file,
+        payload.source,
+        apiKey,
+        ss,
+        folders.processed,
+        targetFolder,
+        payload.contributor
+      );
+
+      return {
+        success: true,
+        processed: true,
+        receiptId: processResult.receiptId,
+        store: processResult.storeName,
+        total: processResult.totalPaid,
+        itemsCount: processResult.itemsCount,
+        source: processResult.source,
+        folderName: targetFolder.getName()
+      };
+    } else {
+      return {
+        success: true,
+        processed: false,
+        folderName: targetFolder.getName(),
+        message: 'Saved to queue'
+      };
+    }
+  } catch (err) {
+    return {
+      success: false,
+      message: err.message || err.toString()
+    };
+  }
+}
+
+/**
+ * Handles manual grocery entry from the Form (No receipt photo)
+ */
+function submitManualReceipt(data) {
+  try {
+    if (!data || !data.storeName || !data.purchaseDate) {
+      throw new Error('Store Name and Purchase Date are required.');
+    }
+    if (!Array.isArray(data.items) || data.items.length === 0) {
+      throw new Error('At least one item is required.');
+    }
+
+    ensureSheetSetup();
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const receiptsSheet = ss.getSheetByName(CONFIG.SHEET_RECEIPTS);
+    const itemsSheet = ss.getSheetByName(CONFIG.SHEET_ITEMS);
+
+    const safeStore = data.storeName.replace(/[^a-zA-Z0-9]/g, '').substring(0, 8).toUpperCase() || 'STORE';
+    const receiptId = 'MAN-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd') + '-' + safeStore + '-' + Math.floor(100 + Math.random() * 900);
+    const processedAt = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+    const effectiveSource = data.contributor ? ('Community (' + data.contributor + ')') : (data.source || 'Personal');
+
+    // 1. Append Receipt Row (Column 13: Source)
+    const receiptRow = [
+      receiptId,
+      data.purchaseDate,
+      data.storeName,
+      data.totalPaid || 0,
+      data.discounts || 0,
+      0, // fees
+      0, // tax
+      data.totalPaid || 0,
+      CONFIG.CURRENCY_CODE,
+      data.paymentMethod || 'Manual Entry',
+      'Manual Entry',
+      processedAt,
+      effectiveSource
+    ];
+    receiptsSheet.appendRow(receiptRow);
+
+    // 2. Append Item Rows (Column 13: Source)
+    const itemRows = data.items.map(function(item) {
+      const qty = (item.quantity !== null && item.quantity !== undefined && Number(item.quantity) > 0) ? Number(item.quantity) : 1;
+      const tot = (item.total_price !== null && item.total_price !== undefined && !isNaN(Number(item.total_price))) ? Number(item.total_price) : 0;
+      const unitPrice = (qty > 0 && tot > 0) ? Number((tot / qty).toFixed(2)) : tot;
+
+      return [
+        receiptId,
+        data.purchaseDate,
+        data.storeName,
+        item.raw_name || '',
+        item.standard_name || item.raw_name || '',
+        item.category || 'Uncategorized',
+        qty,
+        item.unit || 'unit',
+        tot,
+        unitPrice,
+        item.is_on_sale ? 'YES' : 'NO',
+        item.notes || 'Manual Entry',
+        effectiveSource
+      ];
+    });
+
+    itemsSheet.getRange(
+      itemsSheet.getLastRow() + 1, 
+      1, 
+      itemRows.length, 
+      itemRows[0].length
+    ).setValues(itemRows);
+
+    return {
+      success: true,
+      receiptId: receiptId,
+      itemsCount: itemRows.length,
+      source: effectiveSource
+    };
+  } catch (err) {
+    return {
+      success: false,
+      message: err.message || err.toString()
+    };
+  }
+}
+
+/**
+ * Helper to get Form HTML from file
+ */
+function getFormHtml() {
+  try {
+    return HtmlService.createHtmlOutputFromFile('Form').getContent();
+  } catch (e) {
+    return '<!DOCTYPE html><html><body style="font-family:sans-serif; padding:20px;">' +
+           '<h2>Form.html not found</h2>' +
+           '<p>Please ensure Form.html is created in your Google Apps Script project alongside Code.gs.</p>' +
+           '</body></html>';
+  }
 }

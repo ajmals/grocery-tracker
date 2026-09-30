@@ -1,0 +1,1093 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><?= isCommunityOnly ? '👥 Community Grocery Price Contributor' : '🧾 Receipt & Grocery Entry' ?></title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #4f46e5;
+      --primary-hover: #4338ca;
+      --primary-light: #eef2ff;
+      --emerald: #059669;
+      --emerald-light: #ecfdf5;
+      --slate-50: #f8fafc;
+      --slate-100: #f1f5f9;
+      --slate-200: #e2e8f0;
+      --slate-300: #cbd5e1;
+      --slate-600: #475569;
+      --slate-700: #334155;
+      --slate-800: #1e293b;
+      --slate-900: #0f172a;
+      --danger: #ef4444;
+      --radius: 12px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    body {
+      background: #f8fafc;
+      color: var(--slate-800);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 16px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: 650px;
+      background: #ffffff;
+      border-radius: var(--radius);
+      box-shadow: 0 10px 25px -5px rgba(15, 23, 42, 0.08), 0 8px 10px -6px rgba(15, 23, 42, 0.04);
+      border: 1px solid var(--slate-200);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      color: #ffffff;
+      padding: 20px 24px;
+      position: relative;
+    }
+
+    .header-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 8px;
+    }
+
+    .badge-personal {
+      background: #ede9fe;
+      color: #6d28d9;
+    }
+
+    .badge-community {
+      background: #dbeafe;
+      color: #1e40af;
+    }
+
+    .header h1 {
+      font-size: 20px;
+      font-weight: 700;
+      margin-bottom: 4px;
+    }
+
+    .header p {
+      font-size: 13px;
+      color: #94a3b8;
+      line-height: 1.4;
+    }
+
+    /* Source Selector Bar (Personal vs Community) */
+    .source-selector {
+      display: flex;
+      background: var(--slate-100);
+      border-bottom: 1px solid var(--slate-200);
+      padding: 6px;
+      gap: 6px;
+    }
+
+    .source-btn {
+      flex: 1;
+      padding: 10px 14px;
+      border: none;
+      background: transparent;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--slate-600);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .source-btn.active {
+      background: #ffffff;
+      color: var(--primary);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+
+    /* Method Tabs (Photo vs Manual) */
+    .tabs {
+      display: flex;
+      border-bottom: 1px solid var(--slate-200);
+      background: #ffffff;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 14px 16px;
+      background: transparent;
+      border: none;
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--slate-600);
+      cursor: pointer;
+      position: relative;
+      transition: all 0.15s ease;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .tab-btn:hover {
+      color: var(--slate-900);
+      background: var(--slate-50);
+    }
+
+    .tab-btn.active {
+      color: var(--primary);
+    }
+
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--primary);
+    }
+
+    .form-body {
+      padding: 24px;
+      flex: 1;
+    }
+
+    .info-callout {
+      background: var(--primary-light);
+      border-left: 4px solid var(--primary);
+      padding: 12px 14px;
+      border-radius: 0 8px 8px 0;
+      font-size: 12px;
+      color: #3730a3;
+      margin-bottom: 20px;
+      line-height: 1.4;
+    }
+
+    .info-callout.community {
+      background: #eff6ff;
+      border-left-color: #2563eb;
+      color: #1e40af;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-row {
+      display: flex;
+      gap: 12px;
+    }
+
+    .form-row .form-group {
+      flex: 1;
+    }
+
+    label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--slate-700);
+      margin-bottom: 6px;
+    }
+
+    input[type="text"],
+    input[type="date"],
+    input[type="number"],
+    select {
+      width: 100%;
+      padding: 10px 12px;
+      font-size: 14px;
+      border: 1px solid var(--slate-300);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--slate-900);
+      transition: border-color 0.15s;
+    }
+
+    input:focus,
+    select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+    }
+
+    /* Dropzone */
+    .dropzone {
+      border: 2px dashed var(--slate-300);
+      border-radius: var(--radius);
+      padding: 32px 20px;
+      text-align: center;
+      cursor: pointer;
+      background: var(--slate-50);
+      transition: all 0.2s ease;
+      position: relative;
+    }
+
+    .dropzone:hover,
+    .dropzone.dragover {
+      border-color: var(--primary);
+      background: var(--primary-light);
+    }
+
+    .dropzone-icon {
+      font-size: 36px;
+      margin-bottom: 8px;
+    }
+
+    .dropzone-text {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--slate-700);
+      margin-bottom: 4px;
+    }
+
+    .dropzone-hint {
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .file-input {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      opacity: 0;
+      cursor: pointer;
+    }
+
+    .preview-container {
+      margin-top: 16px;
+      display: none;
+      position: relative;
+      border-radius: 8px;
+      overflow: hidden;
+      border: 1px solid var(--slate-200);
+    }
+
+    .preview-image {
+      width: 100%;
+      max-height: 260px;
+      object-fit: contain;
+      background: #000;
+      display: block;
+    }
+
+    .file-info {
+      padding: 10px 12px;
+      background: var(--slate-100);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 12px;
+      color: var(--slate-700);
+    }
+
+    .remove-file-btn {
+      color: var(--danger);
+      background: none;
+      border: none;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    /* Items Table */
+    .items-section {
+      margin-top: 20px;
+      border-top: 1px solid var(--slate-200);
+      padding-top: 16px;
+    }
+
+    .items-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .items-header h3 {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--slate-800);
+    }
+
+    .item-card {
+      background: var(--slate-50);
+      border: 1px solid var(--slate-200);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 10px;
+      position: relative;
+    }
+
+    .item-card-top {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .item-card-bottom {
+      display: grid;
+      grid-template-columns: 2fr 1fr 1fr 1fr 28px;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .btn-delete-item {
+      background: none;
+      border: none;
+      color: var(--danger);
+      cursor: pointer;
+      font-size: 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      border-radius: 4px;
+    }
+
+    .btn-delete-item:hover {
+      background: #fee2e2;
+    }
+
+    .btn-add-item {
+      background: #ffffff;
+      border: 1px dashed var(--primary);
+      color: var(--primary);
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.15s;
+    }
+
+    .btn-add-item:hover {
+      background: var(--primary-light);
+    }
+
+    /* Actions */
+    .form-actions {
+      margin-top: 24px;
+    }
+
+    .btn-submit {
+      width: 100%;
+      padding: 14px;
+      background: linear-gradient(135deg, var(--primary) 0%, #4338ca 100%);
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 600;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 6px -1px rgba(79, 70, 229, 0.2);
+      transition: all 0.15s ease;
+    }
+
+    .btn-submit:hover:not(:disabled) {
+      filter: brightness(1.05);
+      transform: translateY(-1px);
+    }
+
+    .btn-submit:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 12px;
+      font-size: 13px;
+      color: var(--slate-700);
+    }
+
+    /* Status & Alerts */
+    .status-box {
+      margin-top: 16px;
+      padding: 14px;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.4;
+      display: none;
+    }
+
+    .status-success {
+      background: var(--emerald-light);
+      border: 1px solid #a7f3d0;
+      color: #065f46;
+    }
+
+    .status-error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #991b1b;
+    }
+
+    .status-loading {
+      background: var(--primary-light);
+      border: 1px solid #c7d2fe;
+      color: #3730a3;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .spinner {
+      width: 18px;
+      height: 18px;
+      border: 2px solid rgba(79, 70, 229, 0.2);
+      border-top-color: var(--primary);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 0;
+      }
+      .container {
+        border-radius: 0;
+        border: none;
+      }
+      .item-card-bottom {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+      .item-card-bottom .btn-delete-item {
+        grid-column: span 2;
+        justify-self: end;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-badge <?= isCommunityOnly ? 'badge-community' : 'badge-personal' ?>" id="modeBadge">
+      <?= isCommunityOnly ? '👥 Community Contributor' : '👤 Personal Mode' ?>
+    </div>
+    <h1 id="headerTitle"><?= isCommunityOnly ? 'Grocery Price Contributor' : 'Receipt & Grocery Entry' ?></h1>
+    <p id="headerSubtitle">
+      <?= isCommunityOnly 
+        ? 'Contribute receipt photos or manual prices to help compare supermarket deals across stores.' 
+        : 'Upload receipts or enter purchases to track your spending and find the cheapest store prices.' ?>
+    </p>
+  </div>
+
+  <!-- Source Mode Switcher (Hidden in locked community mode) -->
+  <? if (!isCommunityOnly) { ?>
+  <div class="source-selector">
+    <button type="button" class="source-btn active" id="btnModePersonal" onclick="setSourceMode('Personal')">
+      👤 My Personal Grocery
+    </button>
+    <button type="button" class="source-btn" id="btnModeCommunity" onclick="setSourceMode('Community')">
+      👥 Friends / Family (Price Compare Only)
+    </button>
+  </div>
+  <? } ?>
+
+  <!-- Input Method Tabs -->
+  <div class="tabs">
+    <button type="button" class="tab-btn active" id="tabBtnPhoto" onclick="switchMethod('photo')">
+      📷 Upload Receipt Photo
+    </button>
+    <button type="button" class="tab-btn" id="tabBtnManual" onclick="switchMethod('manual')">
+      ✍️ Manual Entry (No Receipt)
+    </button>
+  </div>
+
+  <div class="form-body">
+    <!-- Callout explaining behavior -->
+    <div class="info-callout <?= isCommunityOnly ? 'community' : '' ?>" id="calloutMsg">
+      <?!= isCommunityOnly
+        ? '💡 <strong>Price Comparison Only:</strong> Items submitted here will be added to the price comparison database to discover store discounts, and will NOT affect personal expense budgets.'
+        : '💡 <strong>Personal Grocery:</strong> This receipt will be tracked on your monthly budget dashboard and included in price comparisons.' ?>
+    </div>
+
+    <!-- Contributor Name Field (Shown for Community entries) -->
+    <div class="form-group" id="contributorGroup" style="<?= isCommunityOnly ? 'display:block;' : 'display:none;' ?>">
+      <label for="contributorName">Contributor Name / Nickname (Optional)</label>
+      <input type="text" id="contributorName" placeholder="e.g., Ali, Sister, Ahmed...">
+    </div>
+
+    <!-- METHOD 1: PHOTO UPLOAD -->
+    <div id="methodPhoto">
+      <div class="dropzone" id="dropzone">
+        <div class="dropzone-icon">🧾</div>
+        <div class="dropzone-text">Tap to take photo or choose receipt file</div>
+        <div class="dropzone-hint">Supports JPEG, PNG, HEIC, and PDF files</div>
+        <input type="file" id="receiptFileInput" class="file-input" accept="image/*,application/pdf" capture="environment">
+      </div>
+
+      <div class="preview-container" id="previewContainer">
+        <img id="previewImg" class="preview-image" alt="Receipt Preview">
+        <div class="file-info">
+          <span id="fileNameDisplay">receipt.jpg</span>
+          <button type="button" class="remove-file-btn" onclick="clearFileSelection()">Remove</button>
+        </div>
+      </div>
+
+      <div class="checkbox-group">
+        <input type="checkbox" id="processImmediately" checked>
+        <label for="processImmediately" style="margin-bottom:0; font-weight:500; cursor:pointer;">
+          ⚡ Extract line items with AI immediately (Recommended)
+        </label>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn-submit" id="btnUploadSubmit" onclick="handlePhotoUpload()" disabled>
+          <span>Upload Receipt</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- METHOD 2: MANUAL ENTRY -->
+    <div id="methodManual" style="display: none;">
+      <div class="form-row">
+        <div class="form-group">
+          <label for="manualDate">Purchase Date *</label>
+          <input type="date" id="manualDate">
+        </div>
+        <div class="form-group">
+          <label for="manualStore">Store Name *</label>
+          <input type="text" id="manualStore" placeholder="e.g. Redwave, Agora, STO..." list="knownStoresList">
+          <datalist id="knownStoresList"></datalist>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label for="manualPayment">Payment Method</label>
+          <select id="manualPayment">
+            <option value="Card">Card</option>
+            <option value="Cash">Cash</option>
+            <option value="BML Transfer">BML Transfer</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="manualDiscounts">Total Discounts / Savings (<?= currencyCode ?>)</label>
+          <input type="number" id="manualDiscounts" step="0.01" min="0" placeholder="0.00">
+        </div>
+      </div>
+
+      <!-- Line Items Section -->
+      <div class="items-section">
+        <div class="items-header">
+          <h3>Items Purchased</h3>
+          <button type="button" class="btn-add-item" onclick="addItemRow()">
+            ➕ Add Item
+          </button>
+        </div>
+
+        <div id="itemsContainer">
+          <!-- Dynamic item cards will be added here -->
+        </div>
+
+        <div style="text-align: right; margin-top: 10px; font-size: 14px; font-weight: 700; color: var(--slate-800);">
+          Calculated Total: <span id="calcTotalDisplay"><?= currencyCode ?> 0.00</span>
+        </div>
+      </div>
+
+      <div class="form-actions">
+        <button type="button" class="btn-submit" id="btnManualSubmit" onclick="handleManualSubmit()">
+          <span>💾 Save Grocery Entry</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Status Messages -->
+    <div class="status-box status-loading" id="statusLoading">
+      <div class="spinner"></div>
+      <span id="loadingText">Processing receipt...</span>
+    </div>
+
+    <div class="status-box status-success" id="statusSuccess"></div>
+    <div class="status-box status-error" id="statusError"></div>
+
+  </div>
+</div>
+
+<script>
+  let currentSource = <?= isCommunityOnly ? "'Community'" : "'Personal'" ?>;
+  let selectedFileBase64 = null;
+  let selectedFileName = '';
+  let selectedFileMime = '';
+  const currencyCode = "<?= currencyCode ?>";
+
+  // Predefined Categories
+  const categories = [
+    'Produce (Fruits & Veggies)',
+    'Dairy & Eggs',
+    'Meat & Seafood',
+    'Bakery & Bread',
+    'Pantry & Grains',
+    'Beverages',
+    'Snacks & Confectionery',
+    'Canned & Packaged',
+    'Frozen Foods',
+    'Household & Cleaning',
+    'Personal Care',
+    'Other'
+  ];
+
+  window.addEventListener('DOMContentLoaded', () => {
+    // Set default date to today
+    const today = new Date().toISOString().split('T')[0];
+    const dateInput = document.getElementById('manualDate');
+    if (dateInput) dateInput.value = today;
+
+    // Load initial 2 empty item rows
+    addItemRow();
+
+    // Fetch known stores for autocomplete
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run.withSuccessHandler(populateStoreList).getFormMetadata();
+    }
+
+    setupFileInputHandlers();
+  });
+
+  function populateStoreList(meta) {
+    if (meta && meta.knownStores) {
+      const datalist = document.getElementById('knownStoresList');
+      datalist.innerHTML = '';
+      meta.knownStores.forEach(store => {
+        const opt = document.createElement('option');
+        opt.value = store;
+        datalist.appendChild(opt);
+      });
+    }
+  }
+
+  function setSourceMode(mode) {
+    currentSource = mode;
+    const isPersonal = (mode === 'Personal');
+    
+    const btnPersonal = document.getElementById('btnModePersonal');
+    const btnCommunity = document.getElementById('btnModeCommunity');
+    const badge = document.getElementById('modeBadge');
+    const title = document.getElementById('headerTitle');
+    const subtitle = document.getElementById('headerSubtitle');
+    const callout = document.getElementById('calloutMsg');
+    const contributorGroup = document.getElementById('contributorGroup');
+
+    if (btnPersonal && btnCommunity) {
+      btnPersonal.classList.toggle('active', isPersonal);
+      btnCommunity.classList.toggle('active', !isPersonal);
+    }
+
+    if (isPersonal) {
+      badge.className = 'header-badge badge-personal';
+      badge.textContent = '👤 Personal Mode';
+      title.textContent = 'Receipt & Grocery Entry';
+      subtitle.textContent = 'Upload receipts or enter purchases to track your spending and find the cheapest store prices.';
+      callout.className = 'info-callout';
+      callout.innerHTML = '💡 <strong>Personal Grocery:</strong> This receipt will be tracked on your monthly budget dashboard and included in price comparisons.';
+      contributorGroup.style.display = 'none';
+    } else {
+      badge.className = 'header-badge badge-community';
+      badge.textContent = '👥 Friends & Family Mode';
+      title.textContent = 'Community Price Entry';
+      subtitle.textContent = 'Contribute receipt photos or manual prices to help compare supermarket deals across stores.';
+      callout.className = 'info-callout community';
+      callout.innerHTML = '💡 <strong>Price Comparison Only:</strong> Items submitted here will be pooled into the price comparison tools and will NOT affect your personal expense budgets.';
+      contributorGroup.style.display = 'block';
+    }
+  }
+
+  function switchMethod(method) {
+    const isPhoto = (method === 'photo');
+    document.getElementById('tabBtnPhoto').classList.toggle('active', isPhoto);
+    document.getElementById('tabBtnManual').classList.toggle('active', !isPhoto);
+    document.getElementById('methodPhoto').style.display = isPhoto ? 'block' : 'none';
+    document.getElementById('methodManual').style.display = isPhoto ? 'none' : 'block';
+    hideStatus();
+  }
+
+  // --- Photo Upload Handling ---
+  function setupFileInputHandlers() {
+    const fileInput = document.getElementById('receiptFileInput');
+    const dropzone = document.getElementById('dropzone');
+
+    fileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files[0]) {
+        processSelectedFile(e.target.files[0]);
+      }
+    });
+
+    ['dragenter', 'dragover'].forEach(event => {
+      dropzone.addEventListener(event, (e) => {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+      });
+    });
+
+    ['dragleave', 'drop'].forEach(event => {
+      dropzone.addEventListener(event, (e) => {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+      });
+    });
+
+    dropzone.addEventListener('drop', (e) => {
+      if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+        processSelectedFile(e.dataTransfer.files[0]);
+      }
+    });
+  }
+
+  function processSelectedFile(file) {
+    selectedFileName = file.name;
+    selectedFileMime = file.type || 'image/jpeg';
+    document.getElementById('fileNameDisplay').textContent = file.name + ' (' + Math.round(file.size / 1024) + ' KB)';
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const fullBase64 = e.target.result;
+      selectedFileBase64 = fullBase64.split(',')[1];
+
+      // Preview
+      if (selectedFileMime.startsWith('image/')) {
+        document.getElementById('previewImg').src = fullBase64;
+        document.getElementById('previewImg').style.display = 'block';
+      } else {
+        document.getElementById('previewImg').style.display = 'none';
+      }
+      document.getElementById('previewContainer').style.display = 'block';
+      document.getElementById('dropzone').style.display = 'none';
+      document.getElementById('btnUploadSubmit').disabled = false;
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function clearFileSelection() {
+    selectedFileBase64 = null;
+    selectedFileName = '';
+    selectedFileMime = '';
+    document.getElementById('receiptFileInput').value = '';
+    document.getElementById('previewContainer').style.display = 'none';
+    document.getElementById('dropzone').style.display = 'block';
+    document.getElementById('btnUploadSubmit').disabled = true;
+  }
+
+  function handlePhotoUpload() {
+    if (!selectedFileBase64) return;
+
+    const processImmediately = document.getElementById('processImmediately').checked;
+    const contributor = document.getElementById('contributorName').value.trim();
+
+    showLoading(processImmediately 
+      ? 'Uploading & extracting receipt with Gemini AI (may take 10-15s)...' 
+      : 'Uploading receipt to Drive queue...');
+
+    document.getElementById('btnUploadSubmit').disabled = true;
+
+    const payload = {
+      fileBase64: selectedFileBase64,
+      fileName: selectedFileName,
+      mimeType: selectedFileMime,
+      source: currentSource,
+      contributor: contributor,
+      processImmediately: processImmediately
+    };
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(onPhotoUploadSuccess)
+        .withFailureHandler(onActionFailure)
+        .uploadReceiptFromForm(payload);
+    } else {
+      setTimeout(() => {
+        onPhotoUploadSuccess({
+          success: true,
+          processed: processImmediately,
+          receiptId: 'RCP-DEMO-123',
+          store: 'Sample Supermarket',
+          total: 145.50,
+          itemsCount: 4
+        });
+      }, 1500);
+    }
+  }
+
+  function onPhotoUploadSuccess(res) {
+    hideLoading();
+    document.getElementById('btnUploadSubmit').disabled = false;
+    clearFileSelection();
+
+    if (res && res.success) {
+      let msg = '🎉 <strong>Receipt Uploaded Successfully!</strong><br>';
+      if (res.processed) {
+        msg += `• <strong>Receipt ID:</strong> ${res.receiptId}<br>` +
+               `• <strong>Store:</strong> ${res.store || 'Detected Store'}<br>` +
+               `• <strong>Total Paid:</strong> ${currencyCode} ${Number(res.total || 0).toFixed(2)}<br>` +
+               `• <strong>Items Extracted:</strong> ${res.itemsCount || 0} line items logged.<br>` +
+               `• <strong>Source:</strong> ${res.source || currentSource}`;
+      } else {
+        msg += `Saved to the <strong>${res.folderName || 'Uploads'}</strong> folder in Google Drive.<br>` +
+               `It will be processed during the next scheduled batch or when you click "Process Pending Receipts".`;
+      }
+      showSuccess(msg);
+    } else {
+      showError(res.message || 'Failed to process receipt.');
+    }
+  }
+
+  // --- Manual Entry Handling ---
+  function addItemRow(initialData) {
+    const container = document.getElementById('itemsContainer');
+    const idx = container.children.length;
+
+    const card = document.createElement('div');
+    card.className = 'item-card';
+    card.id = 'itemRow_' + idx;
+
+    let catOptions = categories.map(c => `<option value="${c}">${c}</option>`).join('');
+
+    card.innerHTML = `
+      <div class="item-card-top">
+        <input type="text" class="item-name" placeholder="Item Name (e.g. Whole Milk 1L)" style="flex:2;" required>
+        <select class="item-cat" style="flex:1;">
+          ${catOptions}
+        </select>
+      </div>
+      <div class="item-card-bottom">
+        <div>
+          <input type="number" class="item-qty" placeholder="Qty" value="1" min="0.01" step="any" oninput="recalcItem(this)">
+        </div>
+        <div>
+          <select class="item-unit">
+            <option value="unit">unit</option>
+            <option value="kg">kg</option>
+            <option value="g">g</option>
+            <option value="L">L</option>
+            <option value="ml">ml</option>
+            <option value="pack">pack</option>
+            <option value="can">can</option>
+            <option value="bottle">bottle</option>
+          </select>
+        </div>
+        <div>
+          <input type="number" class="item-total" placeholder="Total (${currencyCode})" step="0.01" min="0" oninput="recalcTotal()" required>
+        </div>
+        <div class="item-unit-price" style="font-size:11px; color:#64748b; text-align:center;">
+          —
+        </div>
+        <button type="button" class="btn-delete-item" title="Remove Item" onclick="removeItemRow('${card.id}')">
+          🗑️
+        </button>
+      </div>
+    `;
+
+    container.appendChild(card);
+    recalcTotal();
+  }
+
+  function removeItemRow(id) {
+    const el = document.getElementById(id);
+    if (el) el.remove();
+    recalcTotal();
+  }
+
+  function recalcItem(input) {
+    const card = input.closest('.item-card');
+    const qty = parseFloat(card.querySelector('.item-qty').value) || 1;
+    const total = parseFloat(card.querySelector('.item-total').value) || 0;
+    const unitPriceDisplay = card.querySelector('.item-unit-price');
+
+    if (qty > 0 && total > 0) {
+      unitPriceDisplay.textContent = currencyCode + ' ' + (total / qty).toFixed(2);
+    } else {
+      unitPriceDisplay.textContent = '—';
+    }
+  }
+
+  function recalcTotal() {
+    let sum = 0;
+    document.querySelectorAll('.item-total').forEach(inp => {
+      sum += parseFloat(inp.value) || 0;
+    });
+    document.getElementById('calcTotalDisplay').textContent = currencyCode + ' ' + sum.toFixed(2);
+  }
+
+  function handleManualSubmit() {
+    const date = document.getElementById('manualDate').value;
+    const store = document.getElementById('manualStore').value.trim();
+    const payment = document.getElementById('manualPayment').value;
+    const discounts = parseFloat(document.getElementById('manualDiscounts').value) || 0;
+    const contributor = document.getElementById('contributorName').value.trim();
+
+    if (!date) {
+      alert('Please select a purchase date.');
+      return;
+    }
+    if (!store) {
+      alert('Please enter a store name.');
+      return;
+    }
+
+    const items = [];
+    const itemCards = document.querySelectorAll('.item-card');
+    
+    itemCards.forEach(card => {
+      const name = card.querySelector('.item-name').value.trim();
+      const cat = card.querySelector('.item-cat').value;
+      const qty = parseFloat(card.querySelector('.item-qty').value) || 1;
+      const unit = card.querySelector('.item-unit').value;
+      const total = parseFloat(card.querySelector('.item-total').value) || 0;
+      const unitPrice = (qty > 0 && total > 0) ? Number((total / qty).toFixed(2)) : total;
+
+      if (name && total > 0) {
+        items.push({
+          raw_name: name,
+          standard_name: name,
+          category: cat,
+          quantity: qty,
+          unit: unit,
+          total_price: total,
+          unit_price: unitPrice,
+          is_on_sale: false,
+          notes: 'Manual entry'
+        });
+      }
+    });
+
+    if (items.length === 0) {
+      alert('Please add at least one item with a name and price.');
+      return;
+    }
+
+    let calculatedTotal = items.reduce((a, b) => a + (b.total_price || 0), 0);
+
+    const payload = {
+      purchaseDate: date,
+      storeName: store,
+      paymentMethod: payment,
+      discounts: discounts,
+      totalPaid: calculatedTotal,
+      source: currentSource,
+      contributor: contributor,
+      items: items
+    };
+
+    showLoading('Saving entry to Google Sheets...');
+    document.getElementById('btnManualSubmit').disabled = true;
+
+    if (typeof google !== 'undefined' && google.script && google.script.run) {
+      google.script.run
+        .withSuccessHandler(onManualSubmitSuccess)
+        .withFailureHandler(onActionFailure)
+        .submitManualReceipt(payload);
+    } else {
+      setTimeout(() => {
+        onManualSubmitSuccess({
+          success: true,
+          receiptId: 'MAN-DEMO-999',
+          itemsCount: items.length
+        });
+      }, 1000);
+    }
+  }
+
+  function onManualSubmitSuccess(res) {
+    hideLoading();
+    document.getElementById('btnManualSubmit').disabled = false;
+
+    if (res && res.success) {
+      showSuccess(
+        `🎉 <strong>Grocery Entry Saved!</strong><br>` +
+        `• <strong>Receipt ID:</strong> ${res.receiptId}<br>` +
+        `• <strong>Items Logged:</strong> ${res.itemsCount}<br>` +
+        `• <strong>Source:</strong> ${res.source || currentSource}<br>` +
+        `Data has been appended to your spreadsheet.`
+      );
+
+      // Reset items table
+      document.getElementById('itemsContainer').innerHTML = '';
+      addItemRow();
+      recalcTotal();
+    } else {
+      showError(res.message || 'Failed to save entry.');
+    }
+  }
+
+  function onActionFailure(err) {
+    hideLoading();
+    document.getElementById('btnUploadSubmit').disabled = false;
+    document.getElementById('btnManualSubmit').disabled = false;
+    showError('Error: ' + (err.message || err.toString()));
+  }
+
+  // --- UI Helpers ---
+  function showLoading(msg) {
+    hideStatus();
+    document.getElementById('loadingText').textContent = msg;
+    document.getElementById('statusLoading').style.display = 'flex';
+  }
+
+  function hideLoading() {
+    document.getElementById('statusLoading').style.display = 'none';
+  }
+
+  function showSuccess(html) {
+    const el = document.getElementById('statusSuccess');
+    el.innerHTML = html;
+    el.style.display = 'block';
+  }
+
+  function showError(msg) {
+    const el = document.getElementById('statusError');
+    el.textContent = msg;
+    el.style.display = 'block';
+  }
+
+  function hideStatus() {
+    document.getElementById('statusLoading').style.display = 'none';
+    document.getElementById('statusSuccess').style.display = 'none';
+    document.getElementById('statusError').style.display = 'none';
+  }
+</script>
+
+</body>
+</html>
