@@ -103,6 +103,15 @@ Once committed to GitHub, they will automatically display below!
 - **✍️ Manual Entry Mode (No Receipt)**: Bought groceries at a local market with no paper receipt? Enter the store, date, and multiple items dynamically (`+ Add Item`).
 - **🔒 Context-Locked Link (`?mode=community`)**: Share a link with friends on WhatsApp or Viber that permanently locks into Community mode so they cannot accidentally affect your personal budget.
 
+### 🇲🇻 Government Price Benchmarking & Store Leaderboard (Agumagu)
+- **Direct Official Integration**: Pulls live surveillance quotes directly from the Maldivian Ministry of Economic Development & Trade open API ([agumagu.trade.gov.mv](https://agumagu.trade.gov.mv/)).
+- **Two-Sheet System**:
+  - `🇲🇻 Gov Price Data`: Stores all 14,000+ recent verified store-level quotes (Date, Commodity, Store, Island, Price, Gov Base, Diff, Stock Level, Brand) sorted newest date first.
+  - `🇲🇻 Gov Price Dashboard`: Interactive dashboard with commodity dropdown selector, 4 KPI cards (Gov Base, Malé Lowest, National Lowest, Market Average), and dynamic Store-by-Store Price Leaderboard automatically sorted from cheapest to most expensive.
+- **Automatic Drive CSV Snapshots**: Saves timestamped archives to `Receipt_Scraper/4_Gov_Price_Archives/agumagu_prices_YYYY-MM-DD.csv` in Google Drive on every sync.
+- **Automated Daily Background Trigger**: Refreshes quotes automatically every morning at 07:00 AM MVT.
+- **Receipt Price Audit Modal**: One-click audit (`🔍 Double-Check Receipts vs Gov Benchmarks`) matching your scanned receipt items with official commodities, flagging overpayments, fair market rates, and great deals with exact MVR variances.
+
 ---
 
 ## 🏗️ Architecture & Workflow
@@ -152,9 +161,11 @@ graph TD
 2. In the top navigation menu, open **Extensions** > **Apps Script**.
 3. Clear out any default code in `Code.gs`.
 4. Copy the entire contents of [`Code.gs`](Code.gs) from this repository and paste it into `Code.gs`.
-5. In the Apps Script editor, click the **`+`** icon next to *Files* on the left sidebar > select **HTML** > name it `Form` (so it becomes `Form.html`).
-6. Copy the entire contents of [`Form.html`](Form.html) from this repository and paste it into `Form.html`.
-7. Click the **Save** icon 💾 (or press `Cmd + S` / `Ctrl + S`).
+5. Click the **`+`** icon next to *Files* on the left sidebar > select **Script** > name it `Agumagu` (so it becomes `Agumagu.gs`).
+6. Copy the entire contents of [`Agumagu.gs`](Agumagu.gs) from this repository and paste it into `Agumagu.gs`.
+7. Click the **`+`** icon next to *Files* > select **HTML** > name it `Form` (so it becomes `Form.html`).
+8. Copy the entire contents of [`Form.html`](Form.html) from this repository and paste it into `Form.html`.
+9. Click the **Save** icon 💾 (or press `Cmd + S` / `Ctrl + S`).
 
 ---
 
@@ -253,6 +264,7 @@ const CONFIG = {
   PERSONAL_UPLOAD_FOLDER_NAME: '1_Personal_Uploads',
   COMMUNITY_UPLOAD_FOLDER_NAME: '2_Community_Uploads',
   PROCESSED_FOLDER_NAME: '3_Processed',
+  GOV_ARCHIVES_FOLDER_NAME: '4_Gov_Price_Archives',
 
   // Sheet Tab Names
   SHEET_RECEIPTS: 'Receipts',
@@ -261,6 +273,8 @@ const CONFIG = {
   SHEET_PRICE_COMPARE: '🏷️ Price Compare',
   SHEET_PRICE_TRENDS: '📅 Seasonal & Price Trends',
   SHEET_STORE_MATRIX: '🏬 Store Matrix',
+  SHEET_AGUMAGU_DASHBOARD: '🇲🇻 Gov Price Dashboard',
+  SHEET_AGUMAGU_DATA: '🇲🇻 Gov Price Data',
 
   // Currency Settings (Defaults to MVR - Maldivian Rufiyaa, customizable for any country)
   CURRENCY_CODE: 'MVR',
@@ -306,6 +320,7 @@ The custom menu includes diagnostic tools:
 
 ```text
 ├── Code.gs                   # Core Google Apps Script implementation
+├── Agumagu.gs                # Official Gov price scraper, daily trigger & receipt price audit
 ├── Form.html                 # Responsive Web App & Dialog UI for mobile/desktop entry
 ├── README.md                 # Complete documentation & setup instructions
 ├── LICENSE                   # MIT Open Source License

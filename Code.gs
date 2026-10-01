@@ -17,6 +17,7 @@ const CONFIG = {
   PERSONAL_UPLOAD_FOLDER_NAME: '1_Personal_Uploads',
   COMMUNITY_UPLOAD_FOLDER_NAME: '2_Community_Uploads',
   PROCESSED_FOLDER_NAME: '3_Processed',
+  GOV_ARCHIVES_FOLDER_NAME: '4_Gov_Price_Archives',
 
   // Legacy Folder Support (for seamless upgrade without losing pending files)
   LEGACY_UPLOAD_FOLDER_NAME: 'Receipt_Uploads',
@@ -29,6 +30,11 @@ const CONFIG = {
   SHEET_PRICE_COMPARE: '🏷️ Price Compare',
   SHEET_PRICE_TRENDS: '📅 Seasonal & Price Trends',
   SHEET_STORE_MATRIX: '🏬 Store Matrix',
+  SHEET_AGUMAGU_DASHBOARD: '🇲🇻 Gov Price Dashboard',
+  SHEET_AGUMAGU_DATA: '🇲🇻 Gov Price Data',
+
+  // Agumagu (Ministry of Economic Development & Trade) Open API Endpoint
+  AGUMAGU_API_URL: 'https://agumagu.trade.gov.mv/api/bootstrap',
 
   // Currency Settings (Defaults to MVR - Maldivian Rufiyaa, customizable to any currency)
   // Examples:
@@ -61,6 +67,8 @@ function onOpen() {
     .addSeparator()
     .addItem('▶️ Process Pending Receipts Now', 'processPendingReceiptsWithAlert')
     .addItem('📊 Build / Refresh Dashboards', 'buildDashboardTabsWithAlert')
+    .addItem('🇲🇻 Sync Gov Market Prices (Agumagu)', 'syncAgumaguPricesWithAlert')
+    .addItem('🔍 Double-Check Receipts vs Gov Benchmarks', 'showPriceAuditDialog')
     .addSeparator()
     .addItem('🔍 Run Diagnostics & Check Status', 'runDiagnostics')
     .addItem('📋 List Available Gemini Models', 'listAvailableModels')
@@ -68,6 +76,8 @@ function onOpen() {
     .addSeparator()
     .addItem('⏰ Enable Hourly Auto-Scraper Trigger', 'installHourlyTrigger')
     .addItem('⏹️ Disable Hourly Auto-Scraper Trigger', 'removeHourlyTrigger')
+    .addItem('⏰ Enable Daily Gov Price Sync (07:00 MVT)', 'installDailyAgumaguTrigger')
+    .addItem('⏹️ Disable Daily Gov Price Sync', 'removeDailyAgumaguTrigger')
     .addToUi();
 }
 
@@ -102,10 +112,12 @@ function runDiagnostics() {
 
   const personalCount = countFiles(folders.personalUpload);
   const communityCount = countFiles(folders.communityUpload);
+  const govArchiveCount = countFiles(folders.govArchives);
 
-  report += '📂 Upload Folders:\n';
+  report += '📂 Storage & Upload Folders:\n';
   report += '• 👤 1_Personal_Uploads: ' + personalCount + ' file(s) pending\n';
-  report += '• 👥 2_Community_Uploads: ' + communityCount + ' file(s) pending\n\n';
+  report += '• 👥 2_Community_Uploads: ' + communityCount + ' file(s) pending\n';
+  report += '• 🇲🇻 4_Gov_Price_Archives: ' + govArchiveCount + ' CSV snapshot(s)\n\n';
 
   // 3. Check Sheets
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -115,27 +127,40 @@ function runDiagnostics() {
   const compareSheet = ss.getSheetByName(CONFIG.SHEET_PRICE_COMPARE);
   const trendsSheet = ss.getSheetByName(CONFIG.SHEET_PRICE_TRENDS);
   const matrixSheet = ss.getSheetByName(CONFIG.SHEET_STORE_MATRIX);
+  const govDashSheet = ss.getSheetByName(CONFIG.SHEET_AGUMAGU_DASHBOARD);
+  const govDataSheet = ss.getSheetByName(CONFIG.SHEET_AGUMAGU_DATA);
   report += '📊 Sheets:\n';
   report += '- Receipts Tab: ' + (receiptsSheet ? '✅ Present (' + (receiptsSheet.getLastColumn() >= 13 ? 'Source column active' : 'Legacy schema') + ')' : '❌ Missing (Click Initialize Sheets)') + '\n';
   report += '- Items Tab: ' + (itemsSheet ? '✅ Present (' + (itemsSheet.getLastColumn() >= 13 ? 'Source column active' : 'Legacy schema') + ')' : '❌ Missing (Click Initialize Sheets)') + '\n';
   report += '- Dashboard Tab: ' + (dashSheet ? '✅ Present' : '⚠️ Missing (Click "Build / Refresh Dashboards")') + '\n';
   report += '- Price Compare Tab: ' + (compareSheet ? '✅ Present' : '⚠️ Missing (Click "Build / Refresh Dashboards")') + '\n';
   report += '- Seasonal Trends Tab: ' + (trendsSheet ? '✅ Present' : '⚠️ Missing (Click "Build / Refresh Dashboards")') + '\n';
-  report += '- Store Matrix Tab: ' + (matrixSheet ? '✅ Present' : '⚠️ Missing (Click "Build / Refresh Dashboards")') + '\n\n';
+  report += '- Store Matrix Tab: ' + (matrixSheet ? '✅ Present' : '⚠️ Missing (Click "Build / Refresh Dashboards")') + '\n';
+  report += '- Gov Price Dashboard: ' + (govDashSheet ? '✅ Present' : '⚠️ Missing (Click "Sync Gov Market Prices")') + '\n';
+  report += '- Gov Price Data Log: ' + (govDataSheet ? '✅ Present (' + (govDataSheet.getLastRow() > 1 ? (govDataSheet.getLastRow() - 1).toLocaleString() + ' quotes)' : 'Empty') : '⚠️ Missing') + '\n\n';
 
-  // 4. Check Hourly Automation Trigger
+  // 4. Check Automation Triggers
   const triggers = ScriptApp.getProjectTriggers();
   let hasHourlyTrigger = false;
+  let hasAgumaguTrigger = false;
   for (let i = 0; i < triggers.length; i++) {
-    if (triggers[i].getHandlerFunction() === 'processPendingReceipts') {
+    const fn = triggers[i].getHandlerFunction();
+    if (fn === 'processPendingReceipts') {
       hasHourlyTrigger = true;
-      break;
+    }
+    if (fn === 'syncAgumaguPrices') {
+      hasAgumaguTrigger = true;
     }
   }
   report += '⏰ Hourly Auto-Scraper Trigger:\n';
   report += hasHourlyTrigger
-    ? '✅ ACTIVE: Running automatically every hour until pending receipts succeed.'
-    : '⚠️ NOT ACTIVE: Receipts won\'t scrape in background. Click "Enable Hourly Auto-Scraper Trigger" from the menu to activate.';
+    ? '✅ ACTIVE: Running automatically every hour until pending receipts succeed.\n\n'
+    : '⚠️ NOT ACTIVE: Receipts won\'t scrape in background. Click "Enable Hourly Auto-Scraper Trigger" from the menu to activate.\n\n';
+
+  report += '🇲🇻 Daily Gov Price Sync Trigger (Agumagu):\n';
+  report += hasAgumaguTrigger
+    ? '✅ ACTIVE: Running automatically every morning (07:00 MVT) to refresh market prices.'
+    : '⚠️ NOT ACTIVE: Gov prices won\'t refresh in background. Click "Enable Daily Gov Price Sync" to activate.';
 
   ui.alert('Receipt Scraper Diagnostics', report, ui.ButtonSet.OK);
 }
@@ -785,7 +810,7 @@ function buildSpendingDashboardSheet(ss) {
     .setFontSize(14)
     .setFontColor("#ffffff")
     .setBackground("#1e293b")
-    .setHorizontalAlignment("center")
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
   sheet.setRowHeight(1, 40);
 
@@ -794,7 +819,7 @@ function buildSpendingDashboardSheet(ss) {
     .setFontSize(9)
     .setFontStyle("italic")
     .setFontColor("#64748b")
-    .setHorizontalAlignment("center")
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
   sheet.setRowHeight(2, 22);
   sheet.setRowHeight(3, 12); // spacer
@@ -1001,7 +1026,7 @@ function buildSpendingDashboardSheet(ss) {
     .setFontSize(11)
     .setFontColor("#ffffff")
     .setBackground("#1e293b")
-    .setHorizontalAlignment("center")
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
   sheet.setRowHeight(38, 30);
 
@@ -1010,7 +1035,7 @@ function buildSpendingDashboardSheet(ss) {
     .setFontSize(9)
     .setFontStyle("italic")
     .setFontColor("#64748b")
-    .setHorizontalAlignment("center")
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
   sheet.setRowHeight(39, 20);
 
@@ -1095,7 +1120,7 @@ function buildPriceCompareSheet(ss) {
     .setFontSize(14)
     .setFontColor("#ffffff")
     .setBackground("#0f172a")
-    .setHorizontalAlignment("center")
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
   sheet.setRowHeight(1, 40);
 
@@ -1104,7 +1129,7 @@ function buildPriceCompareSheet(ss) {
     .setFontSize(9)
     .setFontStyle("italic")
     .setFontColor("#64748b")
-    .setHorizontalAlignment("center")
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
   sheet.setRowHeight(2, 22);
   sheet.setRowHeight(3, 12); // spacer
@@ -1318,7 +1343,9 @@ function buildPriceCompareSheet(ss) {
     .setValue("Tracks how prices for the selected product have changed over time at each specific supermarket. Spot price increases, promotions, and store consistency.")
     .setFontSize(9)
     .setFontStyle("italic")
-    .setFontColor("#64748b");
+    .setFontColor("#64748b")
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("middle");
   sheet.setRowHeight(21, 20);
 
   const storeEvolHeaders = [
@@ -1403,7 +1430,9 @@ function buildPriceCompareSheet(ss) {
     .setValue("Ranked by purchase frequency with the cheapest store deal for each (falls back to essential staples until enough receipts are logged).")
     .setFontSize(9)
     .setFontStyle("italic")
-    .setFontColor("#64748b");
+    .setFontColor("#64748b")
+    .setHorizontalAlignment("left")
+    .setVerticalAlignment("middle");
   sheet.setRowHeight(31, 20);
 
   const top10Headers = [
@@ -1490,7 +1519,7 @@ function buildPriceTrendsSheet(ss) {
     .setFontSize(14)
     .setFontColor("#ffffff")
     .setBackground("#0f172a")
-    .setHorizontalAlignment("center")
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
   sheet.setRowHeight(1, 40);
 
@@ -1499,7 +1528,7 @@ function buildPriceTrendsSheet(ss) {
     .setFontSize(9)
     .setFontStyle("italic")
     .setFontColor("#64748b")
-    .setHorizontalAlignment("center")
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
   sheet.setRowHeight(2, 22);
   sheet.setRowHeight(3, 12); // spacer
@@ -1566,7 +1595,7 @@ function buildPriceTrendsSheet(ss) {
     .setFontSize(11)
     .setFontColor("#ffffff")
     .setBackground("#1e293b")
-    .setHorizontalAlignment("center")
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
   sheet.setRowHeight(8, 28);
 
@@ -1575,7 +1604,7 @@ function buildPriceTrendsSheet(ss) {
     .setFontSize(9)
     .setFontStyle("italic")
     .setFontColor("#64748b")
-    .setHorizontalAlignment("center")
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
   sheet.setRowHeight(9, 20);
 
@@ -1584,7 +1613,7 @@ function buildPriceTrendsSheet(ss) {
 
   // Monthly Pivot Query in A10
   sheet.getRange("A10").setFormula(
-    '=IFERROR(QUERY({Items!E2:E, MAP(Items!B2:B, LAMBDA(d, IFERROR(TEXT(d, "yyyy-mm"), LEFT(d, 7)))), IF(ISNUMBER(Items!J2:J)*(Items!J2:J>0), Items!J2:J, IFERROR(Items!I2:I/MAX(1, Items!G2:G), Items!I2:I))}, "SELECT Col1, AVG(Col3) WHERE Col1 IS NOT NULL AND Col1 <> \'\' AND Col3 > 0 GROUP BY Col1 PIVOT Col2", 1), {"Standardized Product", "Monthly price trends will display here as receipts across different months are scanned"})'
+    '=IFERROR(QUERY({Items!E2:E, MAP(Items!B2:B, LAMBDA(d, IFERROR(TEXT(d, "yyyy-mm"), LEFT(d, 7)))), IF(ISNUMBER(Items!J2:J)*(Items!J2:J>0), Items!J2:J, IFERROR(Items!I2:I/MAX(1, Items!G2:G), Items!I2:I))}, "SELECT Col1, AVG(Col3) WHERE Col1 IS NOT NULL AND Col1 <> \'\' AND Col3 > 0 GROUP BY Col1 PIVOT Col2 LABEL Col1 \'Standardized Product\', AVG(Col3) \'\'", 0), {"Standardized Product", "Monthly price trends will display here as receipts across different months are scanned"})'
   );
 
   // Header style (Row 10)
@@ -1652,7 +1681,7 @@ function buildStoreMatrixSheet(ss) {
     .setFontSize(14)
     .setFontColor("#ffffff")
     .setBackground("#0f172a")
-    .setHorizontalAlignment("center")
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
   sheet.setRowHeight(1, 40);
 
@@ -1661,7 +1690,7 @@ function buildStoreMatrixSheet(ss) {
     .setFontSize(9)
     .setFontStyle("italic")
     .setFontColor("#64748b")
-    .setHorizontalAlignment("center")
+    .setHorizontalAlignment("left")
     .setVerticalAlignment("middle");
   sheet.setRowHeight(2, 22);
   sheet.setRowHeight(3, 12); // spacer
@@ -1671,7 +1700,7 @@ function buildStoreMatrixSheet(ss) {
 
   // Pivot Table Query in A4
   sheet.getRange("A4").setFormula(
-    '=IFERROR(QUERY(Items!A2:L, "SELECT E, AVG(J) WHERE E IS NOT NULL AND J > 0 GROUP BY E PIVOT C", 1), {"Standardized Product", "Store comparisons will display here as receipts are scanned"})'
+    '=IFERROR(QUERY({Items!E2:E, Items!C2:C, IF(ISNUMBER(Items!J2:J)*(Items!J2:J>0), Items!J2:J, IFERROR(Items!I2:I/MAX(1, Items!G2:G), Items!I2:I))}, "SELECT Col1, AVG(Col3) WHERE Col1 IS NOT NULL AND Col1 <> \'\' AND Col3 > 0 GROUP BY Col1 PIVOT Col2 LABEL Col1 \'Standardized Product\', AVG(Col3) \'\'", 0), {"Standardized Product", "Store comparisons will display here as receipts are scanned"})'
   );
 
   // Style header row 4
@@ -1760,12 +1789,14 @@ function getSystemFolders() {
   const personalUpload = getOrCreateSubFolder(root, CONFIG.PERSONAL_UPLOAD_FOLDER_NAME);
   const communityUpload = getOrCreateSubFolder(root, CONFIG.COMMUNITY_UPLOAD_FOLDER_NAME);
   const processed = getOrCreateSubFolder(root, CONFIG.PROCESSED_FOLDER_NAME);
+  const govArchives = getOrCreateSubFolder(root, CONFIG.GOV_ARCHIVES_FOLDER_NAME);
 
   return {
     root: root,
     personalUpload: personalUpload,
     communityUpload: communityUpload,
-    processed: processed
+    processed: processed,
+    govArchives: govArchives
   };
 }
 
@@ -2095,3 +2126,4 @@ function getFormHtml() {
            '</body></html>';
   }
 }
+
